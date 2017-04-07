@@ -1,4 +1,7 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
@@ -6,21 +9,19 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using CSTokenBaseAuth.Auth;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.AspNetCore.Http;
 using Newtonsoft.Json;
-using Microsoft.AspNetCore.Diagnostics;
-using BL.Auth;
-using Microsoft.AspNetCore.Cors.Infrastructure;
 
-namespace Bearer.Web {
+namespace CSTokenBaseAuth {
     public class Startup {
         public Startup(IHostingEnvironment env) {
             var builder = new ConfigurationBuilder()
                 .SetBasePath(env.ContentRootPath)
-                .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
-                .AddJsonFile($"appsettings.{env.EnvironmentName}.json", optional: true)
-                .AddEnvironmentVariables();
+                .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
+                .AddJsonFile($"appsettings.{env.EnvironmentName}.json", optional: true);
 
             if (env.IsEnvironment("Development")) {
                 // This will push telemetry data through Application Insights pipeline faster, allowing you to view results immediately.
@@ -33,30 +34,23 @@ namespace Bearer.Web {
 
         public IConfigurationRoot Configuration { get; }
 
-        // This method gets called by the runtime. Use this method to add services to the container.
+        // This method gets called by the runtime. Use this method to add services to the container
         public void ConfigureServices(IServiceCollection services) {
+            // Add framework services.
             services.AddApplicationInsightsTelemetry(Configuration);
-            services.AddCors();
+
             // Enable the use of an [Authorize("Bearer")] attribute on methods and classes to protect.
             services.AddAuthorization(auth => {
-                auth.AddPolicy(
-                    "Bearer"
-                , new AuthorizationPolicyBuilder()
+                auth.AddPolicy("Bearer", new AuthorizationPolicyBuilder()
                     .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme‌​)
-                    .RequireAuthenticatedUser().Build()
-                );
+                    .RequireAuthenticatedUser().Build());
             });
 
-            // Add framework services.
             services.AddMvc();
         }
 
-        // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
+        // This method gets called by the runtime. Use this method to configure the HTTP request pipeline
         public void Configure(IApplicationBuilder app, IHostingEnvironment env, ILoggerFactory loggerFactory) {
-            app.UseCors(builder => builder.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod().AllowCredentials());
-            //app.UseCors(builder => builder.WithOrigins("http://example.com"));
-
-
             loggerFactory.AddConsole(Configuration.GetSection("Logging"));
             loggerFactory.AddDebug();
 
@@ -64,36 +58,27 @@ namespace Bearer.Web {
 
             app.UseApplicationInsightsExceptionTelemetry();
 
-
-            if (env.IsDevelopment()) {
-                app.UseDeveloperExceptionPage();
-                app.UseBrowserLink();
-            }
-            else {
-                app.UseExceptionHandler("/Home/Error");
-            }
-
             #region Handle Exception
             app.UseExceptionHandler(appBuilder => {
                 appBuilder.Use(async (context, next) => {
                     var error = context.Features[typeof(IExceptionHandlerFeature)] as IExceptionHandlerFeature;
 
-                    //when authorization has failed, should return a json message to client
+                    //when authorization has failed, should retrun a json message to client
                     if (error != null && error.Error is SecurityTokenExpiredException) {
-                        context.Response.StatusCode     = 401;
-                        context.Response.ContentType    = "application/json";
+                        context.Response.StatusCode = 401;
+                        context.Response.ContentType = "application/json";
 
-                        await context.Response.WriteAsync(
-                            JsonConvert.SerializeObject(new { authenticated = false, tokenExpired = true })
-                        );
+                        await context.Response.WriteAsync(JsonConvert.SerializeObject(
+                            new { authenticated = false, tokenExpired = true }
+                        ));
                     }
                     //when orther error, retrun a error message json to client
                     else if (error != null && error.Error != null) {
-                        context.Response.StatusCode  = 500;
+                        context.Response.StatusCode = 500;
                         context.Response.ContentType = "application/json";
-                        await context.Response.WriteAsync(
-                            JsonConvert.SerializeObject( new { success = false, error = error.Error.Message } )
-                        );
+                        await context.Response.WriteAsync(JsonConvert.SerializeObject(
+                            new { success = false, error = error.Error.Message }
+                        ));
                     }
                     //when no error, do next.
                     else
@@ -105,8 +90,8 @@ namespace Bearer.Web {
             #region UseJwtBearerAuthentication
             var options = new JwtBearerOptions();
             options.TokenValidationParameters.IssuerSigningKey = TokenAuthOption.Key;
-            options.TokenValidationParameters.ValidAudience    = TokenAuthOption.Audience;
-            options.TokenValidationParameters.ValidIssuer      = TokenAuthOption.Issuer;
+            options.TokenValidationParameters.ValidAudience = TokenAuthOption.Audience;
+            options.TokenValidationParameters.ValidIssuer = TokenAuthOption.Issuer;
 
             // When receiving a token, check that we've signed it.
             options.TokenValidationParameters.ValidateIssuerSigningKey = true;
@@ -123,18 +108,10 @@ namespace Bearer.Web {
             app.UseJwtBearerAuthentication(options);
             #endregion
 
-
-            app.UseStaticFiles();
-
             app.UseMvc(routes => {
                 routes.MapRoute(
-                    name: "default"
-                ,   template: "{controller=Login}/{action=Index}/{id?}"
-                );
-                //routes.MapRoute(
-                //    name: "api"
-                //, template: "api/{controller=TokenAuth}/{action=GetAuthToken}/{id?}"
-                //);
+                    name: "default",
+                    template: "{controller=Login}/{action=Index}");
             });
         }
     }
